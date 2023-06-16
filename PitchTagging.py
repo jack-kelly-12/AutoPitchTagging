@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-import dateutil.utils
+
 import pandas as pd
 import numpy as np
 from pybaseball import statcast, cache
@@ -10,6 +10,7 @@ import warnings
 from colorama import Fore
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
+import json
 
 cache.enable()
 warnings.filterwarnings('ignore')
@@ -23,21 +24,17 @@ features = ['release_spin_rate', 'spin_axis', 'pfx_x', 'pfx_z', 'p_throws', 'vx0
 pitch_types_sc = ['4-Seam Fastball', 'Sinker', 'Cutter', 'Slider', 'Changeup', 'Curveball', 'Split-Finger']
 pitch_types_yakker = ['Fastball', 'Sinker', 'Cutter', 'Slider', 'Changeup', 'Curveball', 'Splitter']
 
-pitcher_to_pitches = {
-    'Cam Aufderheide': ['Fastball', 'Sinker', 'Cutter', 'Curveball'],
-    'Chandler Brierley': ['Sinker', 'Slider', 'Splitter'],
-    'Cole Cook': ['Fastball', 'Slider', 'Cutter', 'Curveball', 'Sinker', 'Changeup'],
-    'David Harrison': ['Sinker', 'Changeup', 'Slider'],
-    'Tyler Jay': ['Fastball', 'Sinker', 'Slider', 'Curveball', 'Changeup'],
-    'Tanner Kiest': ['Fastball', 'Slider', 'Changeup'],
-    'Tanner Larkins': ['Fastball', 'Sinker', 'Slider', 'Curveball', 'Changeup'],
-    'Jared Liebelt': ['Sinker', 'Slider', 'Changeup'],
-    'Will MacLean': ['Sinker', 'Splitter', 'Slider', 'Curveball'],
-    'Caden O\'brien': ['Fastball', 'Changeup', 'Slider'],
-    'Evy Ruibal': ['Fastball', 'Slider', 'Curveball', 'Sinker'],
-    'Cole Stanton': ['Fastball', 'Curveball', 'Changeup', 'Cutter'],
-    'Brad VanAsdlen': ['Fastball', 'Sinker', 'Splitter', 'Cutter'],
-}
+
+def load_hashmap(filename):
+    try:
+        with open(filename, 'r') as file:
+            hashmap = json.load(file)
+    except FileNotFoundError:
+        hashmap = {}
+    return hashmap
+
+
+pitcher_to_pitches = load_hashmap('pitcher_to_pitches.txt')
 
 print(Fore.GREEN, "\nAUTOMATIC PITCH TAGGING CSV PROGRAM FOR JOLIET SLAMMERS")
 
@@ -79,6 +76,12 @@ def run_add_functions():
 
     for pitcher, repertoire in pitcher_to_pitches.items():
         print(f"{pitcher}: {', '.join(repertoire)}")
+    save_hashmap('pitcher_to_pitches.txt', pitcher_to_pitches)
+
+
+def save_hashmap(filename, hashmap):
+    with open(filename, 'w') as file:
+        json.dump(hashmap, file)
 
 
 def ask_for_input():
@@ -208,6 +211,8 @@ def adjust_changeups(csv):
             csv.at[index, 'AutoPitchType'] = 'Sinker'
         if row['AutoPitchType'] == 'Slider' and row['release_speed'] > 87 and row['TaggedPitchType'] == 'Cutter':
             csv.at[index, 'AutoPitchType'] = 'Cutter'
+        if row['Pitcher'] == 'Justin Ferrell' and row['TaggedPitchType'] == 'Fastball':
+            csv.at[index, 'AutoPitchType'] = 'Fastball'
         if row['AutoPitchType'] is None:
             csv.at[index, 'AutoPitchType'] = csv.at[index, 'TaggedPitchType']
     return csv
