@@ -1,7 +1,5 @@
 import os
 from datetime import datetime
-
-
 import pandas as pd
 import numpy as np
 from pybaseball import statcast, cache
@@ -17,12 +15,16 @@ warnings.filterwarnings('ignore')
 
 pd.options.mode.chained_assignment = None
 
-cols = ['release_spin_rate', 'spin_axis', 'pfx_x', 'pfx_z', 'p_throws', 'pitch_name', 'ax', 'ay', 'az', 'vx0', 'vy0',
+cols = ['release_speed', 'release_spin_rate', 'spin_axis', 'pfx_x', 'pfx_z', 'p_throws', 'pitch_name', 'ax', 'ay', 'az',
+        'vx0', 'vy0',
         'vz0']
-features = ['release_spin_rate', 'spin_axis', 'pfx_x', 'pfx_z', 'p_throws', 'vx0', 'vy0', 'vz0', 'ax', 'ay', 'az']
+features = ['release_speed', 'release_spin_rate', 'spin_axis', 'pfx_x', 'pfx_z', 'p_throws', 'vx0', 'vy0', 'vz0', 'ax',
+            'ay', 'az']
 
 pitch_types_sc = ['4-Seam Fastball', 'Sinker', 'Cutter', 'Slider', 'Changeup', 'Curveball', 'Split-Finger']
 pitch_types_yakker = ['Fastball', 'Sinker', 'Cutter', 'Slider', 'Changeup', 'Curveball', 'Splitter']
+pitch_name_mapping = {0: 'Fastball', 1: 'Sinker', 2: 'Cutter', 3: 'Splitter',
+                      4: 'Slider', 5: 'Curveball', 6: 'Changeup'}
 
 
 def load_hashmap(filename):
@@ -108,7 +110,7 @@ def get_csv():
         print("ERROR: Dir not found, try again")
         main()
     all_data = all_data.rename(
-        columns={'RelSpeed': 'release_speed', 'HorzBreak': 'pfx_x', 'VertBreak': 'pfx_z', 'SpinAxis': 'spin_axis',
+        columns={'yt_RelSpeed': 'release_speed', 'HorzBreak': 'pfx_x', 'VertBreak': 'pfx_z', 'SpinAxis': 'spin_axis',
                  'SpinRate': 'release_spin_rate', 'PitcherThrows': 'p_throws', 'az0': 'az', 'ay0': 'ay', 'ax0': 'ax'})
     all_data['p_throws'] = all_data['p_throws'].replace({
         'Right': 0,
@@ -152,9 +154,6 @@ def load_data():
 
 
 def convert_to_pname(pitch_type):
-    pitch_name_mapping = {0: 'Fastball', 1: 'Sinker', 2: 'Cutter', 3: 'Splitter',
-                          4: 'Slider', 5: 'Curveball', 6: 'Changeup'}
-
     if pitch_type is not None:
         prediction = pitch_type[0]
 
@@ -193,13 +192,18 @@ def clean_rows(model, csv):
         if pitcher in pitcher_to_pitches:
             repertoire = pitcher_to_pitches[pitcher]
             pred_probs = model.predict_proba(row[features].values.reshape(1, -1))[0]
-            valid_pitch_probs = [pred_probs[i] for i, pitch in enumerate(pitch_types_yakker) if pitch in repertoire]
-            if valid_pitch_probs:
-                max_prob_index = np.argmax(valid_pitch_probs)
-                max_prob_pitch = [pitch for i, pitch in enumerate(pitch_types_yakker) if pitch in repertoire][
-                    max_prob_index]
-                csv.at[index, 'AutoPitchType'] = max_prob_pitch
+            pitch_types = model.classes_
 
+            pitch_probabilities = dict(zip(pitch_types, pred_probs))
+
+            filtered_pitch_probabilities = {
+                pitch_type: prob
+                for pitch_type, prob in pitch_probabilities.items()
+                if pitch_name_mapping[pitch_type] in repertoire
+            }
+
+            prediction = pitch_name_mapping[max(filtered_pitch_probabilities, key=filtered_pitch_probabilities.get)]
+            csv.loc[index, 'AutoPitchType'] = prediction
     return csv
 
 
