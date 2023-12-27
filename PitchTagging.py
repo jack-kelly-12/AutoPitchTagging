@@ -6,6 +6,8 @@ import warnings
 from colorama import Fore
 import json
 from sklearn.preprocessing import LabelEncoder
+from tkinter import Tk, filedialog
+from tqdm import tqdm
 
 label_encoder = LabelEncoder()
 
@@ -41,7 +43,8 @@ reverse_map = {
 def load_hashmap(filename):
     try:
         with open(filename, 'r') as file:
-            hashmap = json.load(file)
+            # hashmap = json.load(file)
+            hashmap = {}
     except FileNotFoundError:
         hashmap = {}
     return hashmap
@@ -53,7 +56,7 @@ print(Fore.GREEN, "\nAUTOMATIC PITCH TAGGING CSV PROGRAM FOR JOLIET SLAMMERS")
 
 
 def run_read_functions():
-    input_csv = get_csv()
+    input_csv, file_path = get_csv()
     model = load_model()
     df = predict_rows(model, input_csv)
     final = clean_rows(model, df)
@@ -62,7 +65,8 @@ def run_read_functions():
     pd.set_option('display.max_columns', None)
 
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    output_csv_path = "AutoTaggedCSVs/changeTeam_" + timestamp + ".csv"
+
+    output_csv_path = "AutoTaggedCSVs/autoTagged_" + os.path.splitext(os.path.basename(file_path))[0] + ".csv"
 
     final.loc[final['PitcherThrows'] == 1, 'HorzBreak'] *= -1
     final.loc[final['PitcherThrows'] == 1, 'SpinAxis'] = 360 - final.loc[
@@ -116,18 +120,20 @@ def ask_for_input():
         ask_for_input()
 
 
-def get_csv():
-    directory = input("Input the file path to the Yakkertech data: ")
-    all_data = pd.DataFrame()
+def browse_file():
+    root = Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+    return file_path
 
-    # try:
-    #     for filename in os.listdir(directory):
-    #         if filename.endswith(".csv"):
-    #             file_path = os.path.join(directory, filename)
-    #             df = pd.read_csv(file_path)
-    #             all_data = pd.concat([all_data, df], ignore_index=True)
+
+def get_csv():
+    print(Fore.GREEN + "Please select the Yakkertech data CSV file:")
+    file_path = browse_file()
+
     try:
-        all_data = pd.read_csv(directory)
+        all_data = pd.read_csv(file_path)
     except OSError:
         print("ERROR: File not found, try again")
         main()
@@ -138,9 +144,10 @@ def get_csv():
     })
 
     all_data.loc[all_data['PitcherThrows'] == 1, 'HorzBreak'] *= -1
-    all_data.loc[all_data['PitcherThrows'] == 1, 'SpinAxis'] = 360 - all_data.loc[all_data['PitcherThrows'] == 1, 'SpinAxis']
+    all_data.loc[all_data['PitcherThrows'] == 1, 'SpinAxis'] = 360 - all_data.loc[
+        all_data['PitcherThrows'] == 1, 'SpinAxis']
 
-    return all_data
+    return all_data, file_path
 
 
 def time_to_degrees(time_str):
@@ -170,7 +177,11 @@ def load_model():
 
 def predict_rows(model, csv):
     predictions = []
-    for index, row in csv.iterrows():
+
+    print(Fore.YELLOW + "Making predictions...")
+
+    # Use tqdm to add a loading indicator to the loop
+    for index, row in tqdm(csv.iterrows(), total=len(csv)):
         if not row[features].isnull().any():
             pred = model.predict(row[features].values.reshape(1, -1))
         else:
